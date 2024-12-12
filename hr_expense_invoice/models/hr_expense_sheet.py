@@ -42,12 +42,12 @@ class HrExpenseSheet(models.Model):
                 (ap_lines + transfer_line).reconcile()
         return res
 
-    def action_sheet_move_create(self):
+    def action_sheet_move_post(self):
         """Perform extra checks and set proper payment state according linked
         invoices.
         """
         self._validate_expense_invoice()
-        res = super().action_sheet_move_create()
+        res = super().action_sheet_move_post()
         # The payment state is set in a fixed way in super, but it depends on the
         # payment state of the invoices when there are some of them linked
         self.filtered(
@@ -64,7 +64,7 @@ class HrExpenseSheet(models.Model):
 
     def _compute_invoice_count(self):
         Invoice = self.env["account.move"]
-        can_read = Invoice.check_access_rights("read", raise_exception=False)
+        can_read = Invoice.has_access("read")
         for sheet in self:
             sheet.invoice_count = (
                 can_read and len(sheet.expense_line_ids.mapped("invoice_id")) or 0
@@ -141,7 +141,7 @@ class HrExpenseSheet(models.Model):
             action["view_mode"] = "form"
             action["views"] = [(view.id, "form")]
         else:
-            action["view_mode"] = "tree,form"
+            action["view_mode"] = "list,form"
             action["domain"] = [("id", "in", invoice_ids)]
         return action
 

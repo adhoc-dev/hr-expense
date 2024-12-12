@@ -6,8 +6,7 @@ import base64
 
 from odoo import fields
 from odoo.exceptions import UserError, ValidationError
-from odoo.tests import tagged
-from odoo.tests.common import Form
+from odoo.tests import Form, tagged
 
 from odoo.addons.base.tests.common import DISABLED_MAIL_CONTEXT
 from odoo.addons.hr_expense.tests.common import TestExpenseCommon
@@ -16,8 +15,8 @@ from odoo.addons.hr_expense.tests.common import TestExpenseCommon
 @tagged("post_install", "-at_install")
 class TestHrExpenseInvoice(TestExpenseCommon):
     @classmethod
-    def setUpClass(cls, chart_template_ref=None):
-        super().setUpClass(chart_template_ref=chart_template_ref)
+    def setUpClass(cls):
+        super().setUpClass()
         cls.env = cls.env(context=dict(cls.env.context, **DISABLED_MAIL_CONTEXT))
         cls.account_payment_register = cls.env["account.payment.register"]
         cls.payment_obj = cls.env["account.payment"]
@@ -99,13 +98,13 @@ class TestHrExpenseInvoice(TestExpenseCommon):
             self.expense.total_amount_currency, self.product_a.standard_price
         )
         # We approve sheet, no invoice
+        sheet.action_submit_sheet()
         sheet.action_approve_expense_sheets()
         self.assertEqual(sheet.state, "approve")
-        self.assertFalse(sheet.account_move_ids)
         # We post journal entries
-        sheet.action_sheet_move_create()
+        sheet.action_sheet_move_post()
         self.assertEqual(sheet.state, "post")
-        self.assertTrue(sheet.account_move_ids)
+        self.assertEqual(len(sheet.account_move_ids.ids), 1)
         # We make payment on expense sheet
         self._register_payment(sheet)
 
@@ -119,18 +118,11 @@ class TestHrExpenseInvoice(TestExpenseCommon):
         with Form(self.expense) as f:
             f.invoice_id = self.invoice
         # We approve sheet
+        sheet.action_submit_sheet()
         sheet.action_approve_expense_sheets()
-        self.assertEqual(sheet.state, "approve")
-        self.assertFalse(sheet.account_move_ids)
-        self.assertEqual(self.invoice.state, "posted")
-        # Test state not posted
-        self.invoice.button_draft()
-        with self.assertRaises(UserError):
-            sheet.action_sheet_move_create()
-        self.invoice.action_post()
-        # We post journal entries
-        sheet.action_sheet_move_create()
+        # If sheet has an associated invoice state changes to post
         self.assertEqual(sheet.state, "post")
+        self.assertEqual(self.invoice.state, "posted")
         self.assertEqual(self.invoice.payment_state, "paid")
         self.assertEqual(sheet.payment_state, "not_paid")
         self.assertEqual(self.expense.amount_residual, 100)
@@ -158,12 +150,13 @@ class TestHrExpenseInvoice(TestExpenseCommon):
         self.invoice.action_post()  # residual = 100.0
         self.expense.invoice_id = self.invoice
         # We approve sheet
+        sheet.action_submit_sheet()
         sheet.action_approve_expense_sheets()
         self.assertEqual(sheet.state, "approve")
         self.assertFalse(sheet.account_move_ids)
         self.assertEqual(self.invoice.state, "posted")
         # We post journal entries
-        sheet.action_sheet_move_create()
+        sheet.action_sheet_move_post()
         self.assertEqual(sheet.state, "done")
         self.assertEqual(self.invoice.payment_state, "not_paid")
         # Click on View Invoice button link to the correct invoice
@@ -186,13 +179,12 @@ class TestHrExpenseInvoice(TestExpenseCommon):
         self.assertAlmostEqual(self.expense.total_amount_currency, 100)
         self.assertAlmostEqual(self.expense2.total_amount_currency, 100)
         # We approve sheet
+        sheet.action_submit_sheet()
         sheet.action_approve_expense_sheets()
-        self.assertEqual(sheet.state, "approve")
-        self.assertFalse(sheet.account_move_ids)
-        self.assertEqual(self.invoice.state, "posted")
-        # We post journal entries
-        sheet.action_sheet_move_create()
+        # If sheet has an associated invoice state changes to post
         self.assertEqual(sheet.state, "post")
+        self.assertEqual(len(sheet.account_move_ids.ids), 2)
+        self.assertEqual(self.invoice.state, "posted")
         self.assertEqual(self.invoice.payment_state, "paid")
         self.assertEqual(self.invoice2.payment_state, "paid")
 
@@ -229,9 +221,8 @@ class TestHrExpenseInvoice(TestExpenseCommon):
         self.expense2.invoice_id.partner_id = self.partner_a
         self.expense2.invoice_id.action_post()
         # We approve sheet
+        sheet.action_submit_sheet()
         sheet.action_approve_expense_sheets()
-        # We post journal entries
-        sheet.action_sheet_move_create()
 
     def test_4_hr_expense_constraint(self):
         # Only invoice with status open is allowed
